@@ -1,0 +1,13 @@
+# Backup files
+profile_backup_*.tar.gz
+profile_backup_*.log
+profile_backup_*_software.txt
+restore_profile_backup_*.md
+
+# Test files
+*.test
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
