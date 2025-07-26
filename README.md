@@ -2,6 +2,30 @@
 
 A collection of custom tools and scripts for system administration and development.
 
+## Which Backup Script Should I Use?
+
+```
+┌─────────────────────────────────────┐
+│   How will you use this backup?    │
+└────────────┬────────────────────────┘
+             │
+             ├─── Immediate use (OS reinstall today/this week)
+             │    └─── You control the backup at all times?
+             │         └─── YES → Use backup-profile-enhanced.sh
+             │                    (Convenient, includes everything)
+             │
+             └─── Long-term storage / "just in case"
+                  └─── Use backup-profile-secure.sh
+                       (Excludes sensitive credentials, supports encryption)
+```
+
+### Quick Decision Guide:
+- **Installing new distro this weekend?** → `backup-profile-enhanced.sh`
+- **Making a backup "just in case"?** → `backup-profile-secure.sh`
+- **Giving backup to someone else?** → `backup-profile-secure.sh` (with encryption!)
+- **Storing for more than a week?** → `backup-profile-secure.sh`
+- **Might upload to cloud someday?** → `backup-profile-secure.sh`
+
 ## Tools
 
 ### backup-profile-enhanced.sh
