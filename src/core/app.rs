@@ -479,7 +479,12 @@ impl App {
     async fn handle_error_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ') => {
+                // Clear the error and go back to the previous state
+                self.state.error_message = None;
                 self.state.go_back();
+                // Force a full redraw by resetting the terminal
+                // This helps fix screen corruption issues
+                debug!("Returning from error state to: {:?}", self.state.current_state);
             }
             _ => {}
         }

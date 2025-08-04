@@ -16,8 +16,11 @@ pub struct BackupEngine {
 
 impl BackupEngine {
     pub fn new() -> Result<Self> {
-        // Find the appropriate backup script based on what's available
+        // Use the non-interactive wrapper script for TUI integration
         let possible_paths = vec![
+            PathBuf::from("./backup-noninteractive.sh"),
+            PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-noninteractive.sh"),
+            // Fallback to original scripts if wrapper not found
             PathBuf::from("./backup-profile-secure.sh"),
             PathBuf::from("./backup-profile-enhanced.sh"),
             PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-secure.sh"),
@@ -35,7 +38,7 @@ impl BackupEngine {
         
         let backup_lib_path = backup_lib_path.ok_or_else(|| {
             anyhow::anyhow!(
-                "No backup script found. Please ensure backup-profile-secure.sh or backup-profile-enhanced.sh is available."
+                "No backup script found. Please ensure backup-noninteractive.sh or backup scripts are available."
             )
         })?;
 
@@ -65,38 +68,51 @@ impl BackupEngine {
         info!("Starting backup operation in {} mode", mode.as_str());
         debug!("Backing up {} items", items.len());
 
-        // Determine which script to use based on mode
-        let script_path = if *mode == BackupMode::Secure {
-            // Try to find the secure script
-            let secure_paths = vec![
-                PathBuf::from("./backup-profile-secure.sh"),
-                PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-secure.sh"),
-            ];
-            secure_paths.into_iter()
-                .find(|p| p.exists())
-                .unwrap_or(self.backup_lib_path.clone())
-        } else {
-            // Try to find the enhanced script for complete mode
-            let enhanced_paths = vec![
-                PathBuf::from("./backup-profile-enhanced.sh"),
-                PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-enhanced.sh"),
-            ];
-            enhanced_paths.into_iter()
-                .find(|p| p.exists())
-                .unwrap_or(self.backup_lib_path.clone())
-        };
+        // Check if we're using the non-interactive wrapper
+        let using_wrapper = self.backup_lib_path.file_name()
+            .map(|n| n == "backup-noninteractive.sh")
+            .unwrap_or(false);
 
-        info!("Using backup script: {}", script_path.display());
-
-        // The backup scripts don't take individual item arguments
-        // They backup predefined sets based on their configuration
-        // We'll run the script with appropriate environment variables
         let mut command = TokioCommand::new("bash");
-        command
-            .arg(script_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .stdin(Stdio::piped());
+        
+        if using_wrapper {
+            // Use the wrapper script with mode argument
+            command
+                .arg(&self.backup_lib_path)
+                .arg(mode.as_str())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .stdin(Stdio::null()); // No input needed for non-interactive
+        } else {
+            // Fallback to original scripts (may fail if they need interaction)
+            let script_path = if *mode == BackupMode::Secure {
+                // Try to find the secure script
+                let secure_paths = vec![
+                    PathBuf::from("./backup-profile-secure.sh"),
+                    PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-secure.sh"),
+                ];
+                secure_paths.into_iter()
+                    .find(|p| p.exists())
+                    .unwrap_or(self.backup_lib_path.clone())
+            } else {
+                // Try to find the enhanced script for complete mode
+                let enhanced_paths = vec![
+                    PathBuf::from("./backup-profile-enhanced.sh"),
+                    PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-enhanced.sh"),
+                ];
+                enhanced_paths.into_iter()
+                    .find(|p| p.exists())
+                    .unwrap_or(self.backup_lib_path.clone())
+            };
+            
+            command
+                .arg(script_path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .stdin(Stdio::piped());
+        }
+
+        info!("Using backup script: {}", self.backup_lib_path.display());
 
         // Set output directory via environment variable
         if let Some(output) = output_path {
@@ -116,33 +132,76 @@ impl BackupEngine {
 
         debug!("Executing backup script");
 
+        // For now, we need to run the scripts in non-interactive mode
+        // This means we can't handle GPG encryption properly yet
+        // TODO: Implement proper GPG key handling
+        command.env("BACKUP_NONINTERACTIVE", "yes");
+        command.env("SKIP_GPG", "yes");
+
         let mut child = command.spawn()
             .context("Failed to start backup process")?;
 
-        // Monitor the process output
-        if let Some(stdout) = child.stdout.take() {
+        // Capture both stdout and stderr
+        let stdout_handle = if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
-
-            while let Some(line) = lines.next_line().await? {
-                debug!("Backup output: {}", line);
-                
-                // Parse progress information from the output
-                // This would integrate with the backup-lib.sh progress reporting
-                if line.contains("Processing:") {
-                    // Update progress based on script output
+            Some(tokio::spawn(async move {
+                let mut lines = reader.lines();
+                let mut output = Vec::new();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    debug!("Backup stdout: {}", line);
+                    output.push(line);
                 }
-            }
-        }
+                output
+            }))
+        } else {
+            None
+        };
+
+        let stderr_handle = if let Some(stderr) = child.stderr.take() {
+            let reader = BufReader::new(stderr);
+            Some(tokio::spawn(async move {
+                let mut lines = reader.lines();
+                let mut errors = Vec::new();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    warn!("Backup stderr: {}", line);
+                    errors.push(line);
+                }
+                errors
+            }))
+        } else {
+            None
+        };
 
         // Wait for the process to complete
         let exit_status = child.wait().await?;
+
+        // Collect output
+        let stdout_lines = if let Some(handle) = stdout_handle {
+            handle.await.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        let stderr_lines = if let Some(handle) = stderr_handle {
+            handle.await.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
 
         if exit_status.success() {
             info!("Backup completed successfully");
             Ok(())
         } else {
-            let error_msg = format!("Backup process failed with exit code: {:?}", exit_status.code());
+            let error_details = if !stderr_lines.is_empty() {
+                stderr_lines.join("\n")
+            } else if !stdout_lines.is_empty() {
+                stdout_lines.last().unwrap_or(&"Unknown error".to_string()).clone()
+            } else {
+                "No error details available".to_string()
+            };
+            
+            let error_msg = format!("Backup failed (exit code {:?}): {}", 
+                exit_status.code(), error_details);
             error!("{}", error_msg);
             Err(anyhow::anyhow!(error_msg))
         }
