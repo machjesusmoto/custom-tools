@@ -117,16 +117,32 @@ impl BackupModeSelectionScreen {
 
         for feature in mode_features {
             let (symbol, text) = if feature.starts_with('✓') {
-                ("✓", &feature[2..])
+                // Skip the checkmark character (which is 3 bytes in UTF-8) and the space after it
+                ("✓", feature.chars().skip(2).collect::<String>())
+            } else if feature.starts_with('✗') {
+                // Skip the cross character (which is 3 bytes in UTF-8) and the space after it
+                ("✗", feature.chars().skip(2).collect::<String>())
             } else {
-                ("✗", &feature[2..])
+                // No symbol, use the whole string
+                ("", feature.to_string())
             };
             
-            let color = if symbol == "✓" { Color::Green } else { Color::Red };
-            details_lines.push(Line::from(vec![
-                Span::styled(format!("  {} ", symbol), Style::default().fg(color)),
-                Span::raw(text),
-            ]));
+            let color = match symbol {
+                "✓" => Color::Green,
+                "✗" => Color::Red,
+                _ => Color::White,
+            };
+            
+            if !symbol.is_empty() {
+                details_lines.push(Line::from(vec![
+                    Span::styled(format!("  {} ", symbol), Style::default().fg(color)),
+                    Span::raw(text),
+                ]));
+            } else {
+                details_lines.push(Line::from(vec![
+                    Span::raw(format!("  {}", text)),
+                ]));
+            }
         }
 
         let details_paragraph = Paragraph::new(details_lines)
