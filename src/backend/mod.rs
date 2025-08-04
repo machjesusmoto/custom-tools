@@ -16,15 +16,28 @@ pub struct BackupEngine {
 
 impl BackupEngine {
     pub fn new() -> Result<Self> {
-        let backup_lib_path = PathBuf::from("./backup-lib.sh");
+        // Find the appropriate backup script based on what's available
+        let possible_paths = vec![
+            PathBuf::from("./backup-profile-secure.sh"),
+            PathBuf::from("./backup-profile-enhanced.sh"),
+            PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-secure.sh"),
+            PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-enhanced.sh"),
+        ];
         
-        // Verify the backup library exists
-        if !backup_lib_path.exists() {
-            return Err(anyhow::anyhow!(
-                "Backup library not found at: {}. Please ensure backup-lib.sh is in the current directory.",
-                backup_lib_path.display()
-            ));
+        let mut backup_lib_path = None;
+        for path in &possible_paths {
+            if path.exists() {
+                backup_lib_path = Some(path.clone());
+                info!("Found backup script at: {}", path.display());
+                break;
+            }
         }
+        
+        let backup_lib_path = backup_lib_path.ok_or_else(|| {
+            anyhow::anyhow!(
+                "No backup script found. Please ensure backup-profile-secure.sh or backup-profile-enhanced.sh is available."
+            )
+        })?;
 
         // Verify it's executable
         let metadata = std::fs::metadata(&backup_lib_path)?;
@@ -34,7 +47,7 @@ impl BackupEngine {
         {
             use std::os::unix::fs::PermissionsExt;
             if permissions.mode() & 0o111 == 0 {
-                warn!("Backup library is not executable, attempting to make it executable");
+                warn!("Backup script is not executable, attempting to make it executable");
                 std::fs::set_permissions(&backup_lib_path, std::fs::Permissions::from_mode(0o755))?;
             }
         }
@@ -52,45 +65,56 @@ impl BackupEngine {
         info!("Starting backup operation in {} mode", mode.as_str());
         debug!("Backing up {} items", items.len());
 
-        // Prepare arguments for the backup script
-        let mut args = vec![
-            "bash".to_string(),
-            self.backup_lib_path.to_string_lossy().to_string(),
-            "create_backup".to_string(),
-            mode.as_str().to_string(),
-        ];
+        // Determine which script to use based on mode
+        let script_path = if *mode == BackupMode::Secure {
+            // Try to find the secure script
+            let secure_paths = vec![
+                PathBuf::from("./backup-profile-secure.sh"),
+                PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-secure.sh"),
+            ];
+            secure_paths.into_iter()
+                .find(|p| p.exists())
+                .unwrap_or(self.backup_lib_path.clone())
+        } else {
+            // Try to find the enhanced script for complete mode
+            let enhanced_paths = vec![
+                PathBuf::from("./backup-profile-enhanced.sh"),
+                PathBuf::from("/home/dtaylor/GitHub/custom-tools/backup-profile-enhanced.sh"),
+            ];
+            enhanced_paths.into_iter()
+                .find(|p| p.exists())
+                .unwrap_or(self.backup_lib_path.clone())
+        };
 
-        // Add output path if specified
-        if let Some(output) = output_path {
-            args.push("--output".to_string());
-            args.push(output.to_string_lossy().to_string());
-        }
+        info!("Using backup script: {}", script_path.display());
 
-        // Add encryption flag if password is provided
-        if password.is_some() {
-            args.push("--encrypt".to_string());
-        }
-
-        // Add items to backup
-        for item in &items {
-            if item.exists {
-                args.push(item.path.to_string_lossy().to_string());
-            }
-        }
-
-        debug!("Executing backup command with {} arguments", args.len());
-
-        // Execute the backup command
-        let mut command = TokioCommand::new(&args[0]);
+        // The backup scripts don't take individual item arguments
+        // They backup predefined sets based on their configuration
+        // We'll run the script with appropriate environment variables
+        let mut command = TokioCommand::new("bash");
         command
-            .args(&args[1..])
+            .arg(script_path)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::piped())
+            .stdin(Stdio::piped());
 
-        // Set password via environment variable if provided
-        if let Some(pwd) = password {
-            command.env("BACKUP_PASSWORD", String::from_utf8_lossy(pwd.as_bytes()).as_ref());
+        // Set output directory via environment variable
+        if let Some(output) = output_path {
+            command.env("BACKUP_DIR", output.to_string_lossy().as_ref());
+        } else {
+            // Default to current directory
+            command.env("BACKUP_DIR", ".");
         }
+
+        // Handle encryption - the scripts prompt for GPG encryption
+        // For now, we'll set an environment variable to indicate if encryption is desired
+        if password.is_some() {
+            command.env("BACKUP_ENCRYPT", "yes");
+            // Note: The actual scripts use GPG, not a simple password
+            // This would need to be adapted to work with GPG key selection
+        }
+
+        debug!("Executing backup script");
 
         let mut child = command.spawn()
             .context("Failed to start backup process")?;
