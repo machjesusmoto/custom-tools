@@ -1,0 +1,425 @@
+{
+  "version": "1.0.0",
+  "description": "Backup configuration for custom-tools backup system",
+  "last_updated": "2025-01-16",
+  
+  "backup_modes": {
+    "secure": {
+      "description": "Safe backup mode excluding sensitive credentials",
+      "excludes_sensitive": true,
+      "categories": {
+        "dotfiles": [
+          ".bashrc",
+          ".bash_profile", 
+          ".bash_logout",
+          ".profile",
+          ".zshrc",
+          ".p10k.zsh",
+          ".gitconfig",
+          ".npmrc",
+          ".yarnrc",
+          ".nvidia-settings-rc",
+          ".fonts.conf",
+          ".gtkrc-2.0",
+          ".claude.json",
+          ".flutter",
+          ".vimrc",
+          ".tmux.conf"
+        ],
+        "configurations": [
+          ".config",
+          ".local/share",
+          ".local/bin",
+          ".fonts",
+          ".pki"
+        ],
+        "development_safe": [
+          ".cargo/config.toml",
+          ".npm/npmrc",
+          ".yarn/config",
+          ".bun",
+          ".pub-cache",
+          ".dart-tool",
+          ".vscode-oss"
+        ],
+        "claude_ai": [
+          ".claude",
+          ".config/claude"
+        ]
+      },
+      "exclusions": [
+        "*.cache",
+        "*Cache*",
+        "*.log",
+        "node_modules",
+        ".local/share/Trash",
+        ".config/*/Cache",
+        ".config/*/cache",
+        ".config/chromium",
+        ".config/google-chrome",
+        ".mozilla/firefox/*/cache*",
+        ".yarn/cache",
+        ".npm/_cacache",
+        ".cargo/registry/cache",
+        ".cache",
+        ".var/app/*/cache",
+        ".git-credentials",
+        ".aws/credentials",
+        ".docker/config.json"
+      ]
+    },
+    
+    "complete": {
+      "description": "Complete backup including sensitive credentials (handle with care)",
+      "excludes_sensitive": false,
+      "security_warning": "This mode includes SSH keys, GPG keys, and other sensitive credentials. Use encryption and secure storage.",
+      "categories": {
+        "dotfiles": [
+          ".bashrc",
+          ".bash_profile",
+          ".bash_logout", 
+          ".profile",
+          ".zshrc",
+          ".p10k.zsh",
+          ".gitconfig",
+          ".git-credentials",
+          ".npmrc",
+          ".yarnrc",
+          ".nvidia-settings-rc",
+          ".fonts.conf",
+          ".gtkrc-2.0",
+          ".claude.json",  
+          ".flutter",
+          ".vimrc",
+          ".tmux.conf"
+        ],
+        "configurations": [
+          ".config",
+          ".local/share",
+          ".local/bin",
+          ".fonts",
+          ".pki"
+        ],
+        "credentials": [
+          ".ssh",
+          ".gnupg",
+          ".kube", 
+          ".talos",
+          ".aws",
+          ".docker"
+        ],
+        "development_complete": [
+          ".cargo",
+          ".npm",
+          ".yarn/config",
+          ".bun",
+          ".pub-cache",
+          ".dart-tool",
+          ".vscode-oss"
+        ],
+        "claude_ai": [
+          ".claude",
+          ".config/claude"
+        ]
+      },
+      "exclusions": [
+        "*.cache",
+        "*Cache*",
+        "*.log", 
+        "node_modules",
+        ".local/share/Trash",
+        ".config/*/Cache",
+        ".config/*/cache",
+        ".config/chromium",
+        ".config/google-chrome",
+        ".mozilla/firefox/*/cache*",
+        ".yarn/cache",
+        ".npm/_cacache",
+        ".cargo/registry/cache",
+        ".cache",
+        ".var/app/*/cache"
+      ]
+    }
+  },
+  
+  "modern_configurations": {
+    "description": "Modern application configurations and tools",
+    "categories": {
+      "ai_tools": {
+        "claude": {
+          "paths": [".config/claude", ".claude.json", ".claude"],
+          "description": "Claude AI assistant configurations",
+          "security_level": "medium",
+          "category": "development"
+        }
+      },
+      
+      "editors": {
+        "vscode": {
+          "paths": [".config/Code", ".vscode", ".vscode-oss"],
+          "description": "Visual Studio Code configurations",
+          "security_level": "low",
+          "category": "development"
+        },
+        "cursor": {
+          "paths": [".config/cursor"],
+          "description": "Cursor AI editor configurations", 
+          "security_level": "low",
+          "category": "development"
+        },
+        "zed": {
+          "paths": [".config/zed"],
+          "description": "Zed editor configurations",
+          "security_level": "low",
+          "category": "development"
+        },
+        "micro": {
+          "paths": [".config/micro"],
+          "description": "Micro editor configurations",
+          "security_level": "low",
+          "category": "development"
+        },
+        "nvim": {
+          "paths": [".config/nvim"],
+          "description": "Neovim configurations",
+          "security_level": "low", 
+          "category": "development"
+        }
+      },
+      
+      "github_tools": {
+        "gh": {
+          "paths": [".config/gh"],
+          "description": "GitHub CLI configuration",
+          "security_level": "high",
+          "category": "development",
+          "warning": "Contains GitHub authentication tokens"
+        },
+        "gh_copilot": {
+          "paths": [".config/gh-copilot"],
+          "description": "GitHub Copilot CLI configuration",
+          "security_level": "medium",
+          "category": "development"
+        }
+      },
+      
+      "wayland_hyprland": {
+        "hypr": {
+          "paths": [".config/hypr"],
+          "description": "Hyprland window manager configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "waybar": {
+          "paths": [".config/waybar"],
+          "description": "Waybar status bar configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "rofi": {
+          "paths": [".config/rofi"],
+          "description": "Rofi application launcher configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "wofi": {
+          "paths": [".config/wofi"],
+          "description": "Wofi application launcher configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "wlogout": {
+          "paths": [".config/wlogout"],
+          "description": "Wlogout session manager configuration", 
+          "security_level": "low",
+          "category": "system"
+        },
+        "swaylock": {
+          "paths": [".config/swaylock"],
+          "description": "Swaylock screen locker configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "swaync": {
+          "paths": [".config/swaync"],
+          "description": "SwayNC notification center configuration",
+          "security_level": "low",
+          "category": "system"
+        }
+      },
+      
+      "terminals": {
+        "ghostty": {
+          "paths": [".config/ghostty"],
+          "description": "Ghostty terminal configuration",
+          "security_level": "low",
+          "category": "applications"
+        },
+        "alacritty": {
+          "paths": [".config/alacritty"],
+          "description": "Alacritty terminal configuration",
+          "security_level": "low",
+          "category": "applications"
+        },
+        "kitty": {
+          "paths": [".config/kitty"],
+          "description": "Kitty terminal configuration",
+          "security_level": "low",
+          "category": "applications"
+        }
+      },
+      
+      "system_monitoring": {
+        "btop": {
+          "paths": [".config/btop"],
+          "description": "btop system monitor configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "htop": {
+          "paths": [".config/htop"],
+          "description": "htop system monitor configuration", 
+          "security_level": "low",
+          "category": "system"
+        },
+        "fastfetch": {
+          "paths": [".config/fastfetch"],
+          "description": "fastfetch system info configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "starship": {
+          "paths": [".config/starship.toml"],
+          "description": "Starship prompt configuration",
+          "security_level": "low",
+          "category": "system"
+        }
+      },
+      
+      "applications": {
+        "1password": {
+          "paths": [".config/1Password"],
+          "description": "1Password configuration",
+          "security_level": "high",
+          "category": "credentials",
+          "warning": "Contains password manager data"
+        },
+        "brave": {
+          "paths": [".config/BraveSoftware"],
+          "description": "Brave browser configuration",
+          "security_level": "medium",
+          "category": "applications",
+          "exclusions": ["Cache", "cache", "CachedData", "logs"]
+        },
+        "termius": {
+          "paths": [".config/Termius"],
+          "description": "Termius SSH client configuration",
+          "security_level": "high",
+          "category": "applications",
+          "warning": "Contains SSH connection data"
+        },
+        "docker_desktop": {
+          "paths": [".config/Docker Desktop"],
+          "description": "Docker Desktop configuration",
+          "security_level": "medium",
+          "category": "development"
+        }
+      },
+      
+      "theming": {
+        "kvantum": {
+          "paths": [".config/Kvantum"],
+          "description": "Kvantum Qt theme engine configuration",
+          "security_level": "low",
+          "category": "system"
+        },
+        "qt5ct": {
+          "paths": [".config/qt5ct"],
+          "description": "Qt5 Configuration Tool settings",
+          "security_level": "low",
+          "category": "system"
+        },
+        "qt6ct": {
+          "paths": [".config/qt6ct"],
+          "description": "Qt6 Configuration Tool settings",
+          "security_level": "low",
+          "category": "system"
+        }
+      },
+      
+      "system_services": {
+        "systemd_user": {
+          "paths": [".config/systemd/user"],
+          "description": "Systemd user service configurations",
+          "security_level": "medium",
+          "category": "system"
+        }
+      },
+      
+      "flatpak": {
+        "flatpak_data": {
+          "paths": [".var/app"],
+          "description": "Flatpak application user data",
+          "security_level": "medium",
+          "category": "applications",
+          "exclusions": ["*/cache", "*/Cache", "*/tmp", "*/logs"]
+        }
+      }
+    }
+  },
+  
+  "security_classifications": {
+    "high": {
+      "description": "Contains sensitive credentials, keys, or authentication data",
+      "requires_encryption": true,
+      "storage_warning": "Must be stored securely with strong encryption",
+      "examples": [".ssh", ".gnupg", ".aws", ".kube", "1Password", "Termius"]
+    },
+    "medium": {
+      "description": "Contains personal data or application tokens",
+      "requires_encryption": "recommended", 
+      "storage_warning": "Should be encrypted for additional security",
+      "examples": [".config/gh-copilot", "Docker Desktop", "Flatpak data"]
+    },
+    "low": {
+      "description": "Configuration files with minimal sensitive data",
+      "requires_encryption": false,
+      "storage_warning": "Standard backup security practices apply",
+      "examples": ["editor configs", "theme settings", "terminal configs"]
+    }
+  },
+  
+  "backup_strategies": {
+    "daily_secure": {
+      "description": "Daily backup using secure mode for regular system state",
+      "mode": "secure",
+      "frequency": "daily",
+      "retention": "7 days",
+      "encryption": false
+    },
+    "weekly_complete": {
+      "description": "Weekly complete backup including credentials",
+      "mode": "complete", 
+      "frequency": "weekly",
+      "retention": "4 weeks",
+      "encryption": true,
+      "storage": "offline"
+    },
+    "pre_migration": {
+      "description": "Full system backup before major changes",
+      "mode": "complete",
+      "frequency": "on-demand",
+      "retention": "indefinite",
+      "encryption": true,
+      "storage": "multiple_locations"
+    }
+  },
+  
+  "validation": {
+    "required_tools": ["tar", "sha256sum", "find", "du"],
+    "optional_tools": ["gpg", "jq", "pv", "numfmt"],
+    "minimum_disk_space": "100MB",
+    "supported_compression": ["gzip", "xz"],
+    "supported_encryption": ["gpg-symmetric", "gpg-public-key"]
+  }
+}

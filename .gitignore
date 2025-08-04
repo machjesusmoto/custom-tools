@@ -11,3 +11,7 @@ restore_profile_backup_*.md
 # OS files
 .DS_Store
 Thumbs.db
+
+# Added by cargo
+
+/target

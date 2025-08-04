@@ -1,172 +1,201 @@
 #!/bin/bash
 
 # Enhanced Profile Backup Script with software inventory
+# Updated to use modular backup library and include modern configurations
+# Version: 2.0.0
 
-BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_NAME="profile_backup_$BACKUP_DATE"
-BACKUP_ARCHIVE="$HOME/${BACKUP_NAME}.tar.gz"
-BACKUP_LOG="$HOME/${BACKUP_NAME}.log"
-BACKUP_DOC="$HOME/restore_${BACKUP_NAME}.md"
-SOFTWARE_LIST="$HOME/${BACKUP_NAME}_software.txt"
+set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Initialize log file
-echo "Profile Backup Log - $BACKUP_DATE" > "$BACKUP_LOG"
-echo "======================================" >> "$BACKUP_LOG"
-echo "" >> "$BACKUP_LOG"
+# Script configuration
+readonly SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+readonly BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
+readonly BACKUP_NAME="profile_backup_$BACKUP_DATE"
+readonly BACKUP_ARCHIVE="$HOME/${BACKUP_NAME}.tar.gz"
+readonly BACKUP_LOG="$HOME/${BACKUP_NAME}.log"
+readonly BACKUP_DOC="$HOME/restore_${BACKUP_NAME}.md"
+readonly SOFTWARE_LIST="$HOME/${BACKUP_NAME}_software.txt"
+readonly CONFIG_FILE="$SCRIPT_DIR/backup-config.json"
 
-# Function to log messages
-log() {
-    echo "$1" | tee -a "$BACKUP_LOG"
-}
+# Source the backup library
+if [[ -f "$SCRIPT_DIR/backup-lib.sh" ]]; then
+    # shellcheck source=./backup-lib.sh
+    source "$SCRIPT_DIR/backup-lib.sh"
+else
+    echo "ERROR: backup-lib.sh not found in $SCRIPT_DIR" >&2
+    exit 1
+fi
 
-log "Starting enhanced profile backup..."
-log "Archive: $BACKUP_ARCHIVE"
-log ""
+# Initialize the backup system
+backup_lib_init
+log_init "$BACKUP_LOG"
+load_backup_config "$CONFIG_FILE"
 
-# Create software inventory
-echo "Creating software inventory..."
+log_message "INFO" "Starting enhanced profile backup..."
+log_message "INFO" "Archive: $BACKUP_ARCHIVE"
+log_message "INFO" "Using configuration: $CONFIG_FILE"
+
+# Create comprehensive software inventory using library function
+log_message "INFO" "Creating comprehensive software inventory..."
+generate_software_inventory "$SOFTWARE_LIST"
+
+# Discover backup candidates using library function
+log_message "INFO" "Discovering backup candidates on system..."
+BACKUP_CANDIDATES_FILE="/tmp/backup_candidates_$$"
+discover_backup_candidates --include-sizes > "$BACKUP_CANDIDATES_FILE"
+
+# Build backup lists from configuration and discovery
+log_message "INFO" "Building backup lists from configuration (secure mode)..."
+TEMP_SOURCES_FILE="/tmp/backup_sources_$$"
+
+# Get secure mode items from configuration
 {
-    echo "# Software Inventory - $BACKUP_DATE"
-    echo ""
+    # Add dotfiles from config
+    get_backup_items "secure" "dotfiles" 2>/dev/null | while IFS= read -r item; do
+        if [[ -n "$item" && "$item" != "null" ]]; then
+            echo "$HOME/$item"
+        fi
+    done
     
-    echo "## System Packages (pacman)"
-    echo '```'
-    pacman -Qqe
-    echo '```'
-    echo ""
+    # Add configurations from config
+    get_backup_items "secure" "configurations" 2>/dev/null | while IFS= read -r item; do
+        if [[ -n "$item" && "$item" != "null" ]]; then
+            echo "$HOME/$item"
+        fi
+    done
     
-    echo "## AUR Packages"
-    echo '```'
-    pacman -Qqm
-    echo '```'
-    echo ""
+    # Add development safe items from config
+    get_backup_items "secure" "development_safe" 2>/dev/null | while IFS= read -r item; do
+        if [[ -n "$item" && "$item" != "null" ]]; then
+            echo "$HOME/$item"
+        fi
+    done
     
-    if command -v flatpak &>/dev/null; then
-        echo "## Flatpak Applications"
-        echo '```'
-        flatpak list --app --columns=application
-        echo '```'
-        echo ""
-    fi
+    # Add Claude AI items from config
+    get_backup_items "secure" "claude_ai" 2>/dev/null | while IFS= read -r item; do
+        if [[ -n "$item" && "$item" != "null" ]]; then
+            echo "$HOME/$item"
+        fi
+    done
     
-    echo "## Development Tools"
-    echo ""
+    # Add discovered modern configurations that exist
+    while IFS=':' read -r name desc category size_or_path path_or_empty; do
+        # Handle both 4 and 5 field formats from discover function
+        if [[ -n "$path_or_empty" ]]; then
+            # 5 field format (with sizes)
+            local actual_path="$path_or_empty"
+        else
+            # 4 field format (without sizes)
+            local actual_path="$size_or_path"
+        fi
+        
+        # Only include if path exists and is not sensitive for secure mode
+        if [[ -e "$actual_path" ]] && ! is_sensitive_path "$actual_path"; then
+            echo "$actual_path"
+        fi
+    done < "$BACKUP_CANDIDATES_FILE"
     
-    if [ -d "$HOME/.cargo/bin" ]; then
-        echo "### Rust/Cargo Tools"
-        echo '```'
-        ls -1 "$HOME/.cargo/bin" | grep -v "^cargo$\|^rustc$\|^rustup$"
-        echo '```'
-        echo ""
-    fi
-    
-    if command -v npm &>/dev/null; then
-        echo "### Global NPM Packages"
-        echo '```'
-        npm list -g --depth=0 2>/dev/null | grep -v "npm@" | tail -n +2 | sed 's/[├─└]//g' | sed 's/^ *//'
-        echo '```'
-        echo ""
-    fi
-    
-    if command -v pip &>/dev/null; then
-        echo "### Python Packages (user)"
-        echo '```'
-        pip list --user --format=freeze 2>/dev/null
-        echo '```'
-        echo ""
-    fi
-    
-    echo "## Shell Tools in PATH"
-    echo "Tools found in .config/*/bin and .local/bin:"
-    echo '```'
-    find ~/.local/bin ~/.config/*/bin -type f -executable 2>/dev/null | sed "s|$HOME/||" | sort
-    echo '```'
-    
-} > "$SOFTWARE_LIST"
+} | sort -u > "$TEMP_SOURCES_FILE"
 
-log "Software inventory created: $SOFTWARE_LIST"
+# Legacy arrays for compatibility with existing code structure
+DOTFILES=()
+DIRECTORIES=()
 
-# Files to backup
-DOTFILES=(
-    .bashrc .bash_profile .bash_logout .profile
-    .zshrc .p10k.zsh .gitconfig .git-credentials
-    .npmrc .yarnrc .nvidia-settings-rc .fonts.conf
-    .gtkrc-2.0 .claude.json .flutter
-)
-
-# Directories to backup
-DIRECTORIES=(
-    .config .local/share .ssh .gnupg .kube .talos
-    .cargo/config* .npm/npmrc .yarn/config .bun
-    .claude .vscode-oss .pub-cache .dart-tool
-    .fonts .pki .local/bin
-)
+# Read sources into arrays based on type
+while IFS= read -r source; do
+    if [[ -f "$source" ]]; then
+        # Convert absolute path to relative for dotfiles
+        relative_path="${source#$HOME/}"
+        DOTFILES+=("$relative_path")
+    elif [[ -d "$source" ]]; then
+        # Convert absolute path to relative for directories  
+        relative_path="${source#$HOME/}"
+        DIRECTORIES+=("$relative_path")
+    fi
+done < "$TEMP_SOURCES_FILE"
 
 # Log files being backed up
-log "BACKING UP DOTFILES:"
+log_message "INFO" "BACKING UP DOTFILES:"
 for file in "${DOTFILES[@]}"; do
-    if [ -f "$HOME/$file" ]; then
-        log "  [FILE] $file"
+    if [[ -f "$HOME/$file" ]]; then
+        log_message "INFO" "  [FILE] $file"
     fi
 done
 
-log ""
-log "BACKING UP DIRECTORIES:"
+log_message "INFO" "BACKING UP DIRECTORIES:"
 for dir in "${DIRECTORIES[@]}"; do
     # Handle glob patterns
     for path in $HOME/$dir; do
-        if [ -d "$path" ]; then
-            log "  [DIR] ${path#$HOME/}"
+        if [[ -d "$path" ]]; then
+            log_message "INFO" "  [DIR] ${path#$HOME/}"
         fi
     done
 done
 
-# Add software inventory to backup
+# Validate backup destination
+if ! validate_backup_destination "$BACKUP_ARCHIVE"; then
+    log_message "ERROR" "Backup destination validation failed"
+    cleanup_temp_files "/tmp/backup_$$"
+    exit 1
+fi
+
+# Create exclusions file for archive creation
+EXCLUSIONS_FILE="/tmp/backup_exclusions_$$"
+get_backup_items "secure" "exclusions" 2>/dev/null | grep -v "null" > "$EXCLUSIONS_FILE" || {
+    # Fallback exclusions if config parsing fails
+    cat > "$EXCLUSIONS_FILE" << 'EOF'
+*.cache
+*Cache*
+*.log
+node_modules
+.local/share/Trash
+.config/*/Cache
+.config/*/cache
+.config/chromium
+.config/google-chrome
+.mozilla/firefox/*/cache*
+.yarn/cache
+.npm/_cacache
+.cargo/registry/cache
+.cache
+.var/app/*/cache
+.git-credentials
+.aws/credentials
+.docker/config.json
+EOF
+}
+
+# Add software inventory to backup temporarily
 cp "$SOFTWARE_LIST" "$HOME/.software_inventory_backup.txt"
+echo ".software_inventory_backup.txt" >> "$TEMP_SOURCES_FILE"
 
-log ""
-log "Creating archive with exclusions..."
+# Create archive using library function
+log_message "INFO" "Creating backup archive..."
+if create_backup_archive "$TEMP_SOURCES_FILE" "$BACKUP_ARCHIVE" "$EXCLUSIONS_FILE"; then
+    ARCHIVE_SIZE=$(du -h "$BACKUP_ARCHIVE" | cut -f1)
+    log_message "INFO" "Archive created successfully!"
+    log_message "INFO" "Size: $ARCHIVE_SIZE"
+else
+    log_message "ERROR" "Failed to create backup archive"
+    cleanup_temp_files "/tmp/backup_$$"
+    exit 1
+fi
 
-# Create archive directly with exclusions
-tar -czf "$BACKUP_ARCHIVE" \
-    --exclude="*.cache" \
-    --exclude="*Cache*" \
-    --exclude="*.log" \
-    --exclude="node_modules" \
-    --exclude=".local/share/Trash" \
-    --exclude=".config/*/Cache" \
-    --exclude=".config/*/cache" \
-    --exclude=".config/chromium" \
-    --exclude=".config/google-chrome" \
-    --exclude=".mozilla/firefox/*/cache*" \
-    --exclude=".yarn/cache" \
-    --exclude=".npm/_cacache" \
-    --exclude=".cargo/registry/cache" \
-    --exclude=".cache" \
-    --exclude=".var/app/*/cache" \
-    -C "$HOME" \
-    "${DOTFILES[@]}" \
-    .software_inventory_backup.txt \
-    .config .local/share .local/bin .ssh .gnupg .kube .talos \
-    .cargo/config* .npm/npmrc .yarn/config .bun \
-    .claude .vscode-oss .pub-cache .dart-tool \
-    .fonts .pki 2>/dev/null || true
-
-# Remove temporary file
+# Clean up temporary files
 rm -f "$HOME/.software_inventory_backup.txt"
+cleanup_temp_files "/tmp/backup_$$"
 
-ARCHIVE_SIZE=$(du -h "$BACKUP_ARCHIVE" | cut -f1)
-log ""
-log "Archive created successfully!"
-log "Size: $ARCHIVE_SIZE"
+# Calculate and verify hash using library function
+log_message "INFO" "Calculating SHA256 hash..."
+HASH=$(calculate_archive_hash "$BACKUP_ARCHIVE" "${BACKUP_ARCHIVE}.sha256")
+if [[ $? -eq 0 ]]; then
+    log_message "INFO" "SHA256: $HASH"
+else
+    log_message "ERROR" "Failed to calculate hash"
+    exit 1
+fi
 
-# Calculate hash
-log ""
-log "Calculating SHA256 hash..."
-HASH=$(sha256sum "$BACKUP_ARCHIVE" | cut -d' ' -f1)
-log "SHA256: $HASH"
-
-# Create restore documentation
+# Create comprehensive restore documentation
+log_message "INFO" "Creating restore documentation..."
 cat > "$BACKUP_DOC" << EOF
 # Profile Backup and Restore Procedures
 
@@ -385,23 +414,65 @@ Since you're changing desktop environment/window manager:
 
 ---
 Generated: $(date '+%Y-%m-%d %H:%M:%S')
+## Modern Configuration Items Included
+
+This backup includes modern development and system configurations:
+
+### AI/Development Tools
+- Claude AI assistant configurations
+- GitHub CLI and Copilot settings
+- Modern editors: VS Code, Cursor, Zed, Micro, Neovim
+
+### Wayland/Hyprland Ecosystem
+- Hyprland window manager configuration
+- Waybar, Rofi, Wofi, Swaylock, SwayNC configurations
+
+### Modern Terminals & System Tools
+- Ghostty, Alacritty, Kitty terminal configurations
+- btop, htop, fastfetch system monitoring tools
+- Starship prompt configuration
+
+### Modern Applications
+- Docker Desktop, 1Password configurations
+- Brave browser settings
+- Qt theming (Kvantum, qt5ct, qt6ct)
+- Systemd user services
+- Flatpak application data
+
+### Container & Development
+- Modern Docker and container configurations
+- Updated language runtime configurations
+- Modern package manager settings
+
 EOF
 
-log ""
-log "Documentation created: $BACKUP_DOC"
+# Set secure permissions on documentation
+set_secure_permissions "$BACKUP_DOC" "" "600"
+log_message "INFO" "Documentation created: $BACKUP_DOC"
 
-# Final summary
+# Final summary using library logging
 echo ""
-echo "Enhanced Backup Complete!"
+echo -e "${GREEN}Enhanced Backup Complete!${NC}"
 echo "========================"
 echo "Archive: $BACKUP_ARCHIVE"
 echo "Size: $ARCHIVE_SIZE"
 echo "SHA256: $HASH"
+echo "Hash File: ${BACKUP_ARCHIVE}.sha256"
 echo "Log: $BACKUP_LOG"
 echo "Docs: $BACKUP_DOC"
 echo "Software: $SOFTWARE_LIST"
+echo ""
+echo "Modern configurations included:"
+echo "• AI tools (Claude, GitHub Copilot)"
+echo "• Modern editors (Code, Cursor, Zed, Neovim)"
+echo "• Wayland/Hyprland ecosystem"
+echo "• Modern terminals and system tools"
+echo "• Container and development tools"
+echo "• Flatpak application data"
 echo ""
 echo "Next steps:"
 echo "1. Verify: echo \"$HASH  $BACKUP_NAME.tar.gz\" | sha256sum -c"
 echo "2. Copy all files to external storage before reinstalling"
 echo "3. Review $SOFTWARE_LIST to prepare for software reinstallation"
+echo ""
+log_message "INFO" "Enhanced backup completed successfully"

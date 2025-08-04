@@ -1,258 +1,423 @@
 #!/bin/bash
 
 # Secure Profile Backup Script with encryption and security warnings
+# Updated to use modular backup library with enhanced security features
+# Version: 2.0.0
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# ANSI color codes
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+# Script configuration
+readonly SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+readonly BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
+readonly BACKUP_NAME="profile_backup_$BACKUP_DATE"
+readonly BACKUP_ARCHIVE="$HOME/${BACKUP_NAME}.tar.gz"
+readonly BACKUP_LOG="$HOME/${BACKUP_NAME}.log"
+readonly BACKUP_DOC="$HOME/restore_${BACKUP_NAME}.md"
+readonly SOFTWARE_LIST="$HOME/${BACKUP_NAME}_software.txt"
+readonly CONFIG_FILE="$SCRIPT_DIR/backup-config.json"
 
-BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_NAME="profile_backup_$BACKUP_DATE"
-BACKUP_ARCHIVE="$HOME/${BACKUP_NAME}.tar.gz"
-BACKUP_LOG="$HOME/${BACKUP_NAME}.log"
-BACKUP_DOC="$HOME/restore_${BACKUP_NAME}.md"
-SOFTWARE_LIST="$HOME/${BACKUP_NAME}_software.txt"
+# Source the backup library
+if [[ -f "$SCRIPT_DIR/backup-lib.sh" ]]; then
+    # shellcheck source=./backup-lib.sh
+    source "$SCRIPT_DIR/backup-lib.sh"
+else
+    echo "ERROR: backup-lib.sh not found in $SCRIPT_DIR" >&2
+    exit 1
+fi
 
-# Security warning
-echo -e "${RED}==== SECURITY WARNING ====${NC}"
+# Initialize the backup system
+backup_lib_init
+log_init "$BACKUP_LOG"
+load_backup_config "$CONFIG_FILE"
+
+# Enhanced security warning with detailed information
+echo -e "${RED}==== COMPREHENSIVE SECURITY WARNING ====${NC}"
 echo "This script will backup sensitive data including:"
-echo "  - SSH private keys (~/.ssh/)"
-echo "  - GPG private keys (~/.gnupg/)"
-echo "  - Application tokens and credentials"
-echo "  - Git credentials (if stored)"
 echo ""
-echo -e "${YELLOW}The backup will contain UNENCRYPTED sensitive data!${NC}"
+echo -e "${YELLOW}HIGH-RISK ITEMS:${NC}"
+echo "  • SSH private keys (~/.ssh/) - Full server access"
+echo "  • GPG private keys (~/.gnupg/) - Identity and encryption"
+echo "  • Kubernetes configs (~/.kube/) - Cluster access credentials"
+echo "  • Cloud credentials (~/.aws/, ~/.docker/) - Account access"
+echo "  • Application tokens (GitHub, etc.) - Service authentication"
 echo ""
-read -p "Do you want to continue? (yes/no): " -r
+echo -e "${YELLOW}MEDIUM-RISK ITEMS:${NC}"
+echo "  • Git credentials (if stored) - Repository access"
+echo "  • Browser profiles - Saved passwords and sessions"
+echo "  • Application data - Personal information"
+echo ""
+echo -e "${RED}CRITICAL SECURITY NOTICE:${NC}"
+echo "Without encryption, this backup exposes ALL your credentials!"
+echo "Anyone with access to the backup file can:"
+echo "  • Access all your servers and services"
+echo "  • Impersonate you digitally"
+echo "  • Access your cloud resources"
+echo ""
+
+# Get backup mode choice
+echo "Backup mode options:"
+echo "1. SECURE mode - Excludes high-risk credentials (recommended for most users)"
+echo "2. COMPLETE mode - Includes ALL data including credentials (requires encryption)"
+echo ""
+read -p "Select backup mode (1=secure, 2=complete): " -r MODE_CHOICE
+
+case "$MODE_CHOICE" in
+    1)
+        BACKUP_MODE="secure"
+        INCLUDE_CREDENTIALS=false
+        echo -e "${GREEN}Selected: SECURE mode (credentials excluded)${NC}"
+        ;;
+    2)
+        BACKUP_MODE="complete"
+        INCLUDE_CREDENTIALS=true
+        echo -e "${YELLOW}Selected: COMPLETE mode (credentials included)${NC}"
+        echo ""
+        echo -e "${RED}WARNING: You MUST encrypt this backup!${NC}"
+        ;;
+    *)
+        echo "Invalid choice. Defaulting to SECURE mode."
+        BACKUP_MODE="secure"
+        INCLUDE_CREDENTIALS=false
+        ;;
+esac
+
+echo ""
+read -p "Do you want to continue with $BACKUP_MODE mode? (yes/no): " -r
 if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
     echo "Backup cancelled."
     exit 0
 fi
 
+# Encryption decision
 echo ""
-read -p "Would you like to encrypt the backup with GPG? (recommended) (y/N): " -n 1 -r
-echo
 ENCRYPT_BACKUP=false
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if [[ "$INCLUDE_CREDENTIALS" == "true" ]]; then
+    echo -e "${RED}ENCRYPTION IS MANDATORY for complete mode${NC}"
     ENCRYPT_BACKUP=true
+else
+    read -p "Would you like to encrypt the backup with GPG? (recommended) (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        ENCRYPT_BACKUP=true
+    fi
 fi
 
-# Initialize log file with restricted permissions
-touch "$BACKUP_LOG"
-chmod 600 "$BACKUP_LOG"
+log_message "INFO" "Starting secure profile backup..."
+log_message "INFO" "Archive: $BACKUP_ARCHIVE"
+log_message "INFO" "Mode: $BACKUP_MODE"
+log_message "INFO" "Encryption: $ENCRYPT_BACKUP"
+log_message "INFO" "Using configuration: $CONFIG_FILE"
 
-echo "Profile Backup Log - $BACKUP_DATE" > "$BACKUP_LOG"
-echo "======================================" >> "$BACKUP_LOG"
-echo "" >> "$BACKUP_LOG"
+# Create comprehensive software inventory using library function
+log_message "INFO" "Creating comprehensive software inventory..."
+generate_software_inventory "$SOFTWARE_LIST"
 
-# Function to log messages
-log() {
-    echo "$1" | tee -a "$BACKUP_LOG"
-}
+# Discover backup candidates using library function
+log_message "INFO" "Discovering backup candidates on system..."
+BACKUP_CANDIDATES_FILE="/tmp/backup_candidates_$$"
+discover_backup_candidates --include-sizes > "$BACKUP_CANDIDATES_FILE"
 
-log "Starting secure profile backup..."
-log "Archive: $BACKUP_ARCHIVE"
-log "Encryption: $ENCRYPT_BACKUP"
-log ""
+# Build backup lists from configuration based on selected mode
+log_message "INFO" "Building backup lists from configuration ($BACKUP_MODE mode)..."
+TEMP_SOURCES_FILE="/tmp/backup_sources_$$"
 
-# Create software inventory
-echo "Creating software inventory..."
+# Get items based on backup mode from configuration
 {
-    echo "# Software Inventory - $BACKUP_DATE"
-    echo ""
+    # Add dotfiles from config
+    get_backup_items "$BACKUP_MODE" "dotfiles" 2>/dev/null | while IFS= read -r item; do
+        if [[ -n "$item" && "$item" != "null" ]]; then
+            echo "$HOME/$item"
+        fi
+    done
     
-    echo "## System Packages (pacman)"
-    echo '```'
-    pacman -Qqe
-    echo '```'
-    echo ""
+    # Add configurations from config
+    get_backup_items "$BACKUP_MODE" "configurations" 2>/dev/null | while IFS= read -r item; do
+        if [[ -n "$item" && "$item" != "null" ]]; then
+            echo "$HOME/$item"
+        fi
+    done
     
-    echo "## AUR Packages"
-    echo '```'
-    pacman -Qqm
-    echo '```'
-    echo ""
-    
-    if command -v flatpak &>/dev/null; then
-        echo "## Flatpak Applications"
-        echo '```'
-        flatpak list --app --columns=application
-        echo '```'
-        echo ""
+    # Add development items from config
+    if [[ "$BACKUP_MODE" == "complete" ]]; then
+        get_backup_items "$BACKUP_MODE" "development_complete" 2>/dev/null | while IFS= read -r item; do
+            if [[ -n "$item" && "$item" != "null" ]]; then
+                echo "$HOME/$item"
+            fi
+        done
+        
+        # Add credentials for complete mode
+        get_backup_items "$BACKUP_MODE" "credentials" 2>/dev/null | while IFS= read -r item; do
+            if [[ -n "$item" && "$item" != "null" ]]; then
+                echo "$HOME/$item"
+            fi
+        done
+    else
+        get_backup_items "$BACKUP_MODE" "development_safe" 2>/dev/null | while IFS= read -r item; do
+            if [[ -n "$item" && "$item" != "null" ]]; then
+                echo "$HOME/$item"
+            fi
+        done
     fi
     
-    echo "## Development Tools"
-    echo ""
+    # Add Claude AI items from config
+    get_backup_items "$BACKUP_MODE" "claude_ai" 2>/dev/null | while IFS= read -r item; do
+        if [[ -n "$item" && "$item" != "null" ]]; then
+            echo "$HOME/$item"
+        fi
+    done
     
-    if [ -d "$HOME/.cargo/bin" ]; then
-        echo "### Rust/Cargo Tools"
-        echo '```'
-        ls -1 "$HOME/.cargo/bin" | grep -v "^cargo$\|^rustc$\|^rustup$"
-        echo '```'
-        echo ""
+    # Add discovered modern configurations that exist
+    while IFS=':' read -r name desc category size_or_path path_or_empty; do
+        # Handle both 4 and 5 field formats from discover function
+        if [[ -n "$path_or_empty" ]]; then
+            # 5 field format (with sizes)
+            local actual_path="$path_or_empty"
+        else
+            # 4 field format (without sizes)
+            local actual_path="$size_or_path"
+        fi
+        
+        # Include based on backup mode and sensitivity
+        if [[ -e "$actual_path" ]]; then
+            if [[ "$BACKUP_MODE" == "complete" ]]; then
+                # Include everything in complete mode
+                echo "$actual_path"
+            else
+                # Only include non-sensitive items in secure mode
+                if ! is_sensitive_path "$actual_path"; then
+                    echo "$actual_path"
+                fi
+            fi
+        fi
+    done < "$BACKUP_CANDIDATES_FILE"
+    
+} | sort -u > "$TEMP_SOURCES_FILE"
+
+# Legacy arrays for compatibility with existing code structure  
+DOTFILES=()
+DIRECTORIES=()
+
+# Read sources into arrays based on type
+while IFS= read -r source; do
+    if [[ -f "$source" ]]; then
+        # Convert absolute path to relative for dotfiles
+        relative_path="${source#$HOME/}"
+        DOTFILES+=("$relative_path")
+    elif [[ -d "$source" ]]; then
+        # Convert absolute path to relative for directories
+        relative_path="${source#$HOME/}"
+        DIRECTORIES+=("$relative_path")
     fi
-    
-    if command -v npm &>/dev/null; then
-        echo "### Global NPM Packages"
-        echo '```'
-        npm list -g --depth=0 2>/dev/null | grep -v "npm@" | tail -n +2 | sed 's/[├─└]//g' | sed 's/^ *//'
-        echo '```'
-        echo ""
+done < "$TEMP_SOURCES_FILE"
+
+# Enhanced security analysis and warnings
+log_message "INFO" "Performing security analysis of backup contents..."
+
+# Check for sensitive files in the backup selection
+SENSITIVE_FILES_FOUND=false
+while IFS= read -r source; do
+    if is_sensitive_path "$source"; then
+        if [[ "$BACKUP_MODE" == "complete" ]]; then
+            log_message "WARN" "SENSITIVE: Including $source (complete mode)"
+        else
+            log_message "ERROR" "UNEXPECTED: Sensitive file in secure mode: $source"
+        fi
+        SENSITIVE_FILES_FOUND=true
     fi
+done < "$TEMP_SOURCES_FILE"
+
+# Mode-specific security warnings
+if [[ "$BACKUP_MODE" == "secure" ]]; then
+    log_message "INFO" "SECURITY: Using secure mode - sensitive credentials excluded"
     
-    if command -v pip &>/dev/null; then
-        echo "### Python Packages (user)"
-        echo '```'
-        pip list --user --format=freeze 2>/dev/null
-        echo '```'
-        echo ""
+    # Check for sensitive files that should be backed up separately if needed
+    local sensitive_candidates=(
+        ".git-credentials" ".aws/credentials" ".docker/config.json"
+        ".npmrc" ".pypirc" ".netrc" ".config/gh/hosts.yml"
+    )
+    
+    for sensitive_file in "${sensitive_candidates[@]}"; do
+        if [[ -f "$HOME/$sensitive_file" ]]; then
+            log_message "WARN" "EXCLUDED: $sensitive_file (contains credentials - backup separately if needed)"
+        fi
+    done
+else
+    log_message "WARN" "SECURITY: Using complete mode - ALL credentials included!"
+    if [[ "$ENCRYPT_BACKUP" != "true" ]]; then
+        log_message "ERROR" "CRITICAL: Complete mode without encryption is dangerous!"
+        exit 1
     fi
-    
-    echo "## Shell Tools in PATH"
-    echo "Tools found in .config/*/bin and .local/bin:"
-    echo '```'
-    find ~/.local/bin ~/.config/*/bin -type f -executable 2>/dev/null | sed "s|$HOME/||" | sort
-    echo '```'
-    
-} > "$SOFTWARE_LIST"
-
-log "Software inventory created: $SOFTWARE_LIST"
-
-# Files to backup (EXCLUDING .git-credentials for security!)
-DOTFILES=(
-    .bashrc .bash_profile .bash_logout .profile
-    .zshrc .p10k.zsh .gitconfig
-    .npmrc .yarnrc .nvidia-settings-rc .fonts.conf
-    .gtkrc-2.0 .claude.json .flutter
-)
-
-# Directories to backup
-DIRECTORIES=(
-    .config .local/share .ssh .gnupg .kube .talos
-    .cargo/config* .npm/npmrc .yarn/config .bun
-    .claude .vscode-oss .pub-cache .dart-tool
-    .fonts .pki .local/bin
-)
-
-# Warn about excluded sensitive files
-log ""
-log "SECURITY: Excluding .git-credentials (contains plaintext passwords)"
-
-# Check for other sensitive files
-if [ -f "$HOME/.aws/credentials" ]; then
-    log "WARNING: Found .aws/credentials - consider backing up separately with encryption"
 fi
-if [ -f "$HOME/.docker/config.json" ]; then
-    log "WARNING: Found .docker/config.json - may contain auth tokens"
-fi
 
-# Log files being backed up
-log ""
-log "BACKING UP DOTFILES:"
+# Log files being backed up with enhanced security context
+log_message "INFO" "BACKING UP DOTFILES:"
 for file in "${DOTFILES[@]}"; do
-    if [ -f "$HOME/$file" ]; then
-        log "  [FILE] $file"
+    if [[ -f "$HOME/$file" ]]; then
+        if is_sensitive_path "$file"; then
+            log_message "WARN" "  [FILE] $file (SENSITIVE)"
+        else
+            log_message "INFO" "  [FILE] $file"
+        fi
     fi
 done
 
-log ""
-log "BACKING UP DIRECTORIES:"
+log_message "INFO" "BACKING UP DIRECTORIES:"
 for dir in "${DIRECTORIES[@]}"; do
     # Handle glob patterns
     for path in $HOME/$dir; do
-        if [ -d "$path" ]; then
-            log "  [DIR] ${path#$HOME/}"
-            # Warn about sensitive directories
-            case "$path" in
-                */.ssh)
-                    log "    ${YELLOW}⚠ Contains SSH private keys${NC}"
-                    ;;
-                */.gnupg)
-                    log "    ${YELLOW}⚠ Contains GPG private keys${NC}"
-                    ;;
-                */.kube)
-                    log "    ${YELLOW}⚠ May contain cluster credentials${NC}"
-                    ;;
-            esac
+        if [[ -d "$path" ]]; then
+            local dir_name="${path#$HOME/}"
+            if is_sensitive_path "$path"; then
+                log_message "WARN" "  [DIR] $dir_name (SENSITIVE)"
+                # Provide specific warnings for known sensitive directories
+                case "$path" in
+                    */.ssh)
+                        log_message "WARN" "    • Contains SSH private keys - full server access"
+                        ;;
+                    */.gnupg)
+                        log_message "WARN" "    • Contains GPG private keys - identity and encryption"
+                        ;;
+                    */.kube)
+                        log_message "WARN" "    • Contains cluster credentials - Kubernetes access"
+                        ;;
+                    */.aws)
+                        log_message "WARN" "    • Contains AWS credentials - cloud account access"
+                        ;;
+                    */.docker)
+                        log_message "WARN" "    • May contain registry credentials"
+                        ;;
+                    */1Password)
+                        log_message "WARN" "    • Contains password manager data"
+                        ;;
+                    */Termius)
+                        log_message "WARN" "    • Contains SSH connection data"
+                        ;;
+                esac
+            else
+                log_message "INFO" "  [DIR] $dir_name"
+            fi
         fi
     done
 done
 
-# Add software inventory to backup
+# Validate backup destination with enhanced security
+if ! validate_backup_destination "$BACKUP_ARCHIVE"; then
+    log_message "ERROR" "Backup destination validation failed"
+    cleanup_temp_files "/tmp/backup_$$"
+    exit 1
+fi
+
+# Create exclusions file based on backup mode
+EXCLUSIONS_FILE="/tmp/backup_exclusions_$$"
+get_backup_items "$BACKUP_MODE" "exclusions" 2>/dev/null | grep -v "null" > "$EXCLUSIONS_FILE" || {
+    # Fallback exclusions based on mode
+    if [[ "$BACKUP_MODE" == "secure" ]]; then
+        cat > "$EXCLUSIONS_FILE" << 'EOF'
+*.cache
+*Cache*
+*.log
+node_modules
+.local/share/Trash
+.config/*/Cache
+.config/*/cache
+.config/chromium
+.config/google-chrome
+.mozilla/firefox/*/cache*
+.yarn/cache
+.npm/_cacache
+.cargo/registry/cache
+.cache
+.var/app/*/cache
+.git-credentials
+.aws/credentials
+.docker/config.json
+EOF
+    else
+        # Complete mode - fewer exclusions
+        cat > "$EXCLUSIONS_FILE" << 'EOF'
+*.cache
+*Cache*
+*.log
+node_modules
+.local/share/Trash
+.config/*/Cache
+.config/*/cache
+.config/chromium
+.config/google-chrome
+.mozilla/firefox/*/cache*
+.yarn/cache
+.npm/_cacache
+.cargo/registry/cache
+.cache
+.var/app/*/cache
+EOF
+    fi
+}
+
+# Add software inventory to backup temporarily
 cp "$SOFTWARE_LIST" "$HOME/.software_inventory_backup.txt"
+echo ".software_inventory_backup.txt" >> "$TEMP_SOURCES_FILE"
 
-log ""
-log "Creating archive with exclusions..."
+# Create archive using library function with enhanced security
+log_message "INFO" "Creating secure backup archive..."
+# Set umask for secure file creation
+umask 077
 
-# Create archive with restricted permissions
-umask 077  # Ensure created files are only readable by owner
+if create_backup_archive "$TEMP_SOURCES_FILE" "$BACKUP_ARCHIVE" "$EXCLUSIONS_FILE"; then
+    ARCHIVE_SIZE=$(du -h "$BACKUP_ARCHIVE" | cut -f1)
+    log_message "INFO" "Archive created successfully!"
+    log_message "INFO" "Size: $ARCHIVE_SIZE"
+else
+    log_message "ERROR" "Failed to create backup archive"
+    cleanup_temp_files "/tmp/backup_$$"
+    exit 1
+fi
 
-tar -czf "$BACKUP_ARCHIVE" \
-    --exclude="*.cache" \
-    --exclude="*Cache*" \
-    --exclude="*.log" \
-    --exclude="node_modules" \
-    --exclude=".local/share/Trash" \
-    --exclude=".config/*/Cache" \
-    --exclude=".config/*/cache" \
-    --exclude=".config/chromium" \
-    --exclude=".config/google-chrome" \
-    --exclude=".mozilla/firefox/*/cache*" \
-    --exclude=".yarn/cache" \
-    --exclude=".npm/_cacache" \
-    --exclude=".cargo/registry/cache" \
-    --exclude=".cache" \
-    --exclude=".var/app/*/cache" \
-    --exclude=".git-credentials" \
-    --exclude=".aws/credentials" \
-    --exclude=".docker/config.json" \
-    -C "$HOME" \
-    "${DOTFILES[@]}" \
-    .software_inventory_backup.txt \
-    .config .local/share .local/bin .ssh .gnupg .kube .talos \
-    .cargo/config* .npm/npmrc .yarn/config .bun \
-    .claude .vscode-oss .pub-cache .dart-tool \
-    .fonts .pki 2>/dev/null || true
-
-# Set secure permissions on archive
-chmod 600 "$BACKUP_ARCHIVE"
-
-# Remove temporary file
+# Clean up temporary files
 rm -f "$HOME/.software_inventory_backup.txt"
 
-ARCHIVE_SIZE=$(du -h "$BACKUP_ARCHIVE" | cut -f1)
-log ""
-log "Archive created successfully!"
-log "Size: $ARCHIVE_SIZE"
+# Calculate and verify hash using library function
+log_message "INFO" "Calculating SHA256 hash..."
+HASH=$(calculate_archive_hash "$BACKUP_ARCHIVE" "${BACKUP_ARCHIVE}.sha256")
+if [[ $? -eq 0 ]]; then
+    log_message "INFO" "SHA256: $HASH"
+else
+    log_message "ERROR" "Failed to calculate hash"
+    cleanup_temp_files "/tmp/backup_$$"
+    exit 1
+fi
 
-# Calculate hash of unencrypted archive
-log ""
-log "Calculating SHA256 hash..."
-HASH=$(sha256sum "$BACKUP_ARCHIVE" | cut -d' ' -f1)
-log "SHA256: $HASH"
-
-# Encrypt if requested
-if [ "$ENCRYPT_BACKUP" = true ]; then
-    log ""
-    log "Encrypting backup..."
+# Encrypt if requested using library function
+if [[ "$ENCRYPT_BACKUP" == "true" ]]; then
+    log_message "INFO" "Encrypting backup..."
     echo -e "${YELLOW}You will be prompted for a passphrase. Choose a strong one!${NC}"
+    echo "Password requirements:"
+    echo "• Minimum 12 characters"
+    echo "• Mix of uppercase, lowercase, numbers, and symbols" 
+    echo "• Unique and not used elsewhere"
+    echo "• Store securely - it CANNOT be recovered"
+    echo ""
     
-    if gpg --symmetric --cipher-algo AES256 "$BACKUP_ARCHIVE"; then
-        # Remove unencrypted version
-        shred -vuz "$BACKUP_ARCHIVE" 2>/dev/null || rm -f "$BACKUP_ARCHIVE"
+    if encrypt_archive "$BACKUP_ARCHIVE"; then
         BACKUP_ARCHIVE="${BACKUP_ARCHIVE}.gpg"
-        log "Backup encrypted successfully!"
-        log "Encrypted file: $BACKUP_ARCHIVE"
+        log_message "INFO" "Backup encrypted successfully!"
+        log_message "INFO" "Encrypted file: $BACKUP_ARCHIVE"
         
         # Calculate hash of encrypted file
-        ENCRYPTED_HASH=$(sha256sum "$BACKUP_ARCHIVE" | cut -d' ' -f1)
-        log "Encrypted SHA256: $ENCRYPTED_HASH"
+        ENCRYPTED_HASH=$(calculate_archive_hash "$BACKUP_ARCHIVE" "${BACKUP_ARCHIVE}.sha256")
+        if [[ $? -eq 0 ]]; then
+            log_message "INFO" "Encrypted SHA256: $ENCRYPTED_HASH"
+        else
+            log_message "WARN" "Failed to calculate encrypted hash"
+            ENCRYPTED_HASH="[calculation_failed]"
+        fi
     else
-        log "ERROR: Encryption failed! Unencrypted backup remains."
+        log_message "ERROR" "Encryption failed! This is critical for complete mode."
+        if [[ "$BACKUP_MODE" == "complete" ]]; then
+            log_message "ERROR" "Cannot proceed with unencrypted complete backup"
+            cleanup_temp_files "/tmp/backup_$$"
+            exit 1
+        fi
     fi
 fi
 
@@ -321,33 +486,90 @@ fi
 
 cat >> "$BACKUP_DOC" << EOF
 
-## What's Included in This Backup
+## What's Included in This Backup (Mode: $BACKUP_MODE)
 
 ### Shell Configurations
 - \`.bashrc\`, \`.bash_profile\`, \`.bash_logout\`, \`.profile\`
 - \`.zshrc\`, \`.p10k.zsh\` (Zsh and Powerlevel10k configs)
 
 ### Development Tools
+EOF
+
+if [[ "$BACKUP_MODE" == "complete" ]]; then
+    cat >> "$BACKUP_DOC" << EOF
+- \`.gitconfig\`, \`.git-credentials\` (Git configuration WITH credentials) ⚠️
+EOF
+else
+    cat >> "$BACKUP_DOC" << EOF  
 - \`.gitconfig\` (Git configuration - NO credentials)
+EOF
+fi
+
+cat >> "$BACKUP_DOC" << EOF
 - \`.npmrc\`, \`.yarnrc\` (Node.js package managers)
 - \`.cargo/config*\` (Rust configuration)
 - \`.bun/\` (Bun runtime)
 - \`.flutter\` (Flutter SDK settings)
 - \`.pub-cache/\`, \`.dart-tool/\` (Dart/Flutter packages)
 
-### Security & Authentication
-- \`.ssh/\` (SSH keys and known_hosts) ⚠️
-- \`.gnupg/\` (GPG keys and trust database) ⚠️
-- \`.pki/\` (PKI certificates) ⚠️
-- \`.kube/\` (Kubernetes configurations) ⚠️
-- \`.talos/\` (Talos configurations) ⚠️
+### Modern AI/Development Tools
+- Claude AI assistant configurations
+- GitHub CLI and Copilot settings
+- Modern editors: VS Code, Cursor, Zed, Micro, Neovim
+
+### Wayland/Hyprland Ecosystem
+- Hyprland window manager configuration
+- Waybar, Rofi, Wofi, Swaylock, SwayNC configurations
+
+### Modern Terminals & System Tools
+- Ghostty, Alacritty, Kitty terminal configurations
+- btop, htop, fastfetch system monitoring tools
+- Starship prompt configuration
+
+### Modern Applications
+- Docker Desktop configurations
+- Qt theming (Kvantum, qt5ct, qt6ct)
+- Systemd user services
+- Flatpak application data
+EOF
+
+if [[ "$BACKUP_MODE" == "complete" ]]; then
+    cat >> "$BACKUP_DOC" << EOF
+
+### Security & Authentication (⚠️ COMPLETE MODE)
+- \`.ssh/\` (SSH keys and known_hosts) ⚠️ HIGH RISK
+- \`.gnupg/\` (GPG keys and trust database) ⚠️ HIGH RISK
+- \`.pki/\` (PKI certificates) ⚠️ MEDIUM RISK
+- \`.kube/\` (Kubernetes configurations) ⚠️ HIGH RISK
+- \`.talos/\` (Talos configurations) ⚠️ HIGH RISK
+- \`.aws/\` (AWS credentials) ⚠️ HIGH RISK
+- \`.docker/\` (Docker registry credentials) ⚠️ MEDIUM RISK
+- 1Password, Termius configurations ⚠️ HIGH RISK
+
+**⚠️ CRITICAL: This backup contains sensitive credentials that provide:**
+- Full access to your servers and services
+- Cloud account access with billing implications  
+- Identity impersonation capabilities
+- Encryption key access
+EOF
+else
+    cat >> "$BACKUP_DOC" << EOF
 
 ### Application Configurations
 - \`.config/\` (Most application settings)
 - \`.local/share/\` (Application data)
 - \`.local/bin/\` (User scripts and binaries)
-- \`.vscode-oss/\` (VS Code OSS settings)
-- \`.claude/\`, \`.claude.json\` (Claude CLI settings)
+- Claude AI configurations
+
+### Excluded for Security (Secure Mode)
+- SSH private keys, GPG keys (backup separately if needed)
+- Cloud credentials (.aws, .docker configs)
+- Git stored credentials
+- High-risk application credentials
+EOF
+fi
+
+cat >> "$BACKUP_DOC" << EOF
 
 ### System Configurations
 - \`.nvidia-settings-rc\` (NVIDIA display settings)
@@ -471,37 +693,80 @@ echo "test" | gpg --clearsign
 Generated: $(date '+%Y-%m-%d %H:%M:%S')
 EOF
 
-# Set secure permissions on documentation
-chmod 600 "$BACKUP_DOC"
-chmod 600 "$SOFTWARE_LIST"
+# Set secure permissions on documentation using library function
+set_secure_permissions "$BACKUP_DOC" "" "600"
+set_secure_permissions "$SOFTWARE_LIST" "" "600"
 
-log ""
-log "Documentation created: $BACKUP_DOC"
+# Clean up all temporary files
+cleanup_temp_files "/tmp/backup_$$"
 
-# Final summary with security reminder
+log_message "INFO" "Documentation created: $BACKUP_DOC"
+
+# Enhanced final summary with comprehensive security information
 echo ""
 echo -e "${GREEN}Secure Backup Complete!${NC}"
-echo "======================"
+echo "========================="
 echo "Archive: $BACKUP_ARCHIVE"
+echo "Mode: $BACKUP_MODE"
 echo "Size: $ARCHIVE_SIZE"
-if [ "$ENCRYPT_BACKUP" = true ]; then
+
+if [[ "$ENCRYPT_BACKUP" == "true" ]]; then
     echo "Encryption: GPG AES256"
-    echo "SHA256: $ENCRYPTED_HASH"
+    if [[ -n "${ENCRYPTED_HASH:-}" && "$ENCRYPTED_HASH" != "[calculation_failed]" ]]; then
+        echo "Encrypted SHA256: $ENCRYPTED_HASH"
+    fi
+    echo "Original SHA256: $HASH"
 else
     echo "SHA256: $HASH"
-    echo -e "${YELLOW}WARNING: Backup is NOT encrypted!${NC}"
+    if [[ "$BACKUP_MODE" == "complete" ]]; then
+        echo -e "${RED}ERROR: Complete mode REQUIRES encryption!${NC}"
+    else
+        echo -e "${YELLOW}WARNING: Backup is NOT encrypted!${NC}"
+    fi
 fi
+
+echo "Hash File: ${BACKUP_ARCHIVE}.sha256"
 echo "Log: $BACKUP_LOG"
 echo "Docs: $BACKUP_DOC"
 echo "Software: $SOFTWARE_LIST"
 echo ""
-echo -e "${RED}SECURITY REMINDERS:${NC}"
-echo "1. This backup contains sensitive data (SSH/GPG keys)"
-echo "2. Store it securely (encrypted external drive recommended)"
-echo "3. Set proper permissions after restore (see documentation)"
-echo "4. Verify hash before using: echo \"$HASH  $BACKUP_NAME.tar.gz\" | sha256sum -c"
-if [ "$ENCRYPT_BACKUP" != true ]; then
-    echo ""
-    echo -e "${YELLOW}Consider encrypting this backup:${NC}"
-    echo "   gpg -c $BACKUP_ARCHIVE"
+
+echo "Modern configurations included:"
+echo "• AI tools (Claude, GitHub Copilot)"
+echo "• Modern editors (Code, Cursor, Zed, Neovim)"
+echo "• Wayland/Hyprland ecosystem"
+echo "• Modern terminals and system tools"
+echo "• Container and development tools"
+echo "• Flatpak application data"
+echo ""
+
+echo -e "${RED}CRITICAL SECURITY REMINDERS:${NC}"
+if [[ "$BACKUP_MODE" == "complete" ]]; then
+    echo "1. ⚠️  COMPLETE MODE: Contains ALL credentials (SSH, GPG, cloud)"
+    echo "2. 🔒 ENCRYPTED: Must remain encrypted at all times"
+    echo "3. 📦 STORAGE: Use encrypted external drive, never cloud storage"
+    echo "4. 🔑 PASSWORD: Store encryption password securely separately"
+    echo "5. ⏰ ACCESS: Limit who has access to this backup"
+else
+    echo "1. ✅ SECURE MODE: High-risk credentials excluded"
+    echo "2. 🔐 ENCRYPTION: $([ "$ENCRYPT_BACKUP" = true ] && echo "Enabled (recommended)" || echo "Disabled (consider enabling)")"
+    echo "3. 📁 CREDENTIALS: Backup SSH/GPG keys separately if needed"
 fi
+echo "4. 🔍 VERIFICATION: Always verify hash before using backup"
+echo "5. 🗑️  CLEANUP: Securely delete backup after successful restore"
+echo ""
+
+if [[ "$ENCRYPT_BACKUP" != "true" ]]; then
+    echo -e "${YELLOW}RECOMMENDATION: Encrypt this backup for additional security:${NC}"
+    echo "   gpg -c $BACKUP_ARCHIVE"
+    echo ""
+fi
+
+echo "Verification command:"
+if [[ "$ENCRYPT_BACKUP" == "true" && -n "${ENCRYPTED_HASH:-}" ]]; then
+    echo "   echo \"$ENCRYPTED_HASH  $(basename "$BACKUP_ARCHIVE")\" | sha256sum -c"
+else
+    echo "   echo \"$HASH  $BACKUP_NAME.tar.gz\" | sha256sum -c"
+fi
+
+log_message "INFO" "Secure backup completed successfully with mode: $BACKUP_MODE"
