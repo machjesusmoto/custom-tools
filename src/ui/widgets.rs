@@ -4,7 +4,6 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 use zeroize::Zeroize;
 

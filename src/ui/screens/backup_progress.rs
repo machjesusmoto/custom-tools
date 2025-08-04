@@ -1,7 +1,4 @@
-use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    Frame,
-};
+use ratatui::layout::{Constraint, Direction, Layout};
 
 use crate::core::state::AppStateManager;
 use crate::core::types::ProgressStatus;

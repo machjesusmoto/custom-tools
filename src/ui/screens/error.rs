@@ -3,7 +3,6 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 use crate::core::state::AppStateManager;

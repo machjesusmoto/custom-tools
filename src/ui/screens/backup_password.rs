@@ -1,8 +1,5 @@
 use crossterm::event::KeyEvent;
-use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    Frame,
-};
+use ratatui::layout::{Constraint, Direction, Layout};
 
 use crate::core::security::SecurePassword;
 use crate::core::state::AppStateManager;

@@ -1,13 +1,12 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use tokio::process::Command as TokioCommand;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use log::{debug, error, info, warn};
 
 use crate::core::types::{
-    ArchiveInfo, BackupItem, BackupMode, RestoreItem, BackupProgress, RestoreProgress,
-    ProgressStatus
+    ArchiveInfo, BackupItem, BackupMode, RestoreItem
 };
 use crate::core::security::SecurePassword;
 

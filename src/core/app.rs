@@ -1,14 +1,13 @@
 use anyhow::{Context, Result};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use log::{debug, error, info, warn};
-use ratatui::{backend::Backend, Frame};
+use ratatui::backend::Backend;
 use std::path::PathBuf;
 
 use crate::backend::BackupEngine;
 use crate::core::config::BackupConfig;
-use crate::core::security::SecurePassword;
 use crate::core::state::{AppState, AppStateManager};
-use crate::core::types::{BackupItem, BackupMode, RestoreItem, ValidationResult};
+use crate::core::types::{BackupItem, BackupMode, RestoreItem};
 use crate::ui::screens::{
     BackupCompleteScreen, BackupItemSelectionScreen, BackupModeSelectionScreen,
     BackupPasswordScreen, BackupProgressScreen, ErrorScreen, HelpScreen, MainMenuScreen,

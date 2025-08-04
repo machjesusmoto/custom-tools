@@ -1,9 +1,8 @@
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Wrap},
-    Frame,
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Wrap},
 };
 
 use crate::core::types::{BackupItem, RestoreItem, SecurityLevel};

@@ -7,7 +7,6 @@ use crossterm::{
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     Terminal as RatatuiTerminal,
-    Frame,
 };
 use std::{
     io::{self, Stdout},
@@ -81,7 +80,7 @@ impl Drop for Terminal {
 
 /// Helper function to center a rectangle within another rectangle
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ratatui::layout::Rect {
-    use ratatui::layout::{Constraint, Direction, Layout, Margin};
+    use ratatui::layout::{Constraint, Direction, Layout};
     
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
 use log::{debug, error, info};
-use std::io;
 
 mod core;
 mod ui;
