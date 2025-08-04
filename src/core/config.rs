@@ -72,13 +72,87 @@ pub struct ValidationConfig {
 
 impl BackupConfig {
     pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
-        let content = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read config file: {}", path.as_ref().display()))?;
+        let specified_path = path.as_ref();
+        
+        // Try to find the config file in multiple locations
+        let config_path = Self::find_config_file(specified_path)?;
+        
+        let content = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
         
         let config: BackupConfig = serde_json::from_str(&content)
             .with_context(|| "Failed to parse config JSON")?;
         
         Ok(config)
+    }
+    
+    /// Find the config file by checking multiple standard locations
+    fn find_config_file(specified_path: &std::path::Path) -> Result<PathBuf> {
+        // First try the exact path specified
+        if specified_path.exists() {
+            return Ok(specified_path.to_path_buf());
+        }
+        
+        // Build list of potential locations to check
+        let mut search_paths = Vec::new();
+        
+        // Current working directory
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        search_paths.push(current_dir.join(specified_path));
+        
+        // Home directory
+        if let Some(home_dir) = dirs::home_dir() {
+            search_paths.push(home_dir.join(specified_path));
+            
+            // Standard config locations in home directory
+            search_paths.push(home_dir.join(".config").join("backup-manager").join(specified_path.file_name().unwrap_or(std::ffi::OsStr::new("backup-config.json"))));
+            search_paths.push(home_dir.join(".backup-manager").join(specified_path.file_name().unwrap_or(std::ffi::OsStr::new("backup-config.json"))));
+        }
+        
+        // System-wide config locations
+        search_paths.push(PathBuf::from("/etc/backup-manager").join(specified_path.file_name().unwrap_or(std::ffi::OsStr::new("backup-config.json"))));
+        search_paths.push(PathBuf::from("/usr/local/etc/backup-manager").join(specified_path.file_name().unwrap_or(std::ffi::OsStr::new("backup-config.json"))));
+        
+        // Project directory (for development)
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                // Check in the executable directory
+                search_paths.push(exe_dir.join(specified_path));
+                
+                // Check in the project root (parent directories)
+                let mut parent_dir = exe_dir;
+                for _ in 0..5 { // Check up to 5 levels up
+                    if let Some(parent) = parent_dir.parent() {
+                        let project_config = parent.join(specified_path);
+                        if project_config.exists() {
+                            search_paths.push(project_config);
+                        }
+                        parent_dir = parent;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Try each location
+        for path in &search_paths {
+            if path.exists() {
+                log::debug!("Found config file at: {}", path.display());
+                return Ok(path.clone());
+            }
+        }
+        
+        // If none found, provide helpful error message
+        let searched_locations: Vec<String> = search_paths.iter()
+            .map(|p| p.display().to_string())
+            .collect();
+        
+        anyhow::bail!(
+            "Config file '{}' not found. Searched in:\n{}",
+            specified_path.display(),
+            searched_locations.join("\n")
+        );
     }
 
     pub fn get_items_for_mode(&self, mode: &BackupMode) -> Vec<BackupItem> {

@@ -152,6 +152,12 @@ impl App {
                 }
 
                 self.handle_key_event(key).await?;
+                
+                // Check if we should exit after handling the key event
+                if matches!(self.state.current_state, AppState::Exit) {
+                    info!("Application state transitioned to Exit, shutting down");
+                    return Ok(true); // Exit
+                }
             }
             Event::Resize(_, _) => {
                 // Handle terminal resize
@@ -213,38 +219,76 @@ impl App {
     }
 
     async fn handle_main_menu_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('1') | KeyCode::Char('b') => {
-                self.state.transition_to(AppState::BackupModeSelection);
+        // Handle menu navigation and selection
+        if let Some(selected_key) = self.main_menu.handle_key(key) {
+            match selected_key {
+                '1' => {
+                    self.state.transition_to(AppState::BackupModeSelection);
+                }
+                '2' => {
+                    self.load_available_archives().await?;
+                    self.state.transition_to(AppState::RestoreArchiveSelection);
+                }
+                'q' => {
+                    info!("User requested exit from main menu");
+                    self.state.transition_to(AppState::Exit);
+                }
+                _ => {}
             }
-            KeyCode::Char('2') | KeyCode::Char('r') => {
-                self.load_available_archives().await?;
-                self.state.transition_to(AppState::RestoreArchiveSelection);
+        } else {
+            // Handle direct key presses (for backward compatibility)
+            match key.code {
+                KeyCode::Char('b') | KeyCode::Char('B') => {
+                    self.state.transition_to(AppState::BackupModeSelection);
+                }
+                KeyCode::Char('r') | KeyCode::Char('R') => {
+                    self.load_available_archives().await?;
+                    self.state.transition_to(AppState::RestoreArchiveSelection);
+                }
+                KeyCode::Char('Q') | KeyCode::Esc => {
+                    info!("User requested exit from main menu");
+                    self.state.transition_to(AppState::Exit);
+                }
+                _ => {}
             }
-            KeyCode::Char('q') | KeyCode::Esc => {
-                self.state.transition_to(AppState::Exit);
-            }
-            _ => {}
         }
         Ok(())
     }
 
     async fn handle_backup_mode_selection_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('1') | KeyCode::Char('s') => {
-                self.state.backup_mode = BackupMode::Secure;
-                self.load_backup_items().await?;
-                self.state.transition_to(AppState::BackupItemSelection);
+        // Handle menu navigation and selection
+        if let Some(selected_key) = self.backup_mode_selection.handle_key(key) {
+            match selected_key {
+                '1' => {
+                    self.state.backup_mode = BackupMode::Secure;
+                    self.load_backup_items().await?;
+                    self.state.transition_to(AppState::BackupItemSelection);
+                }
+                '2' => {
+                    self.state.backup_mode = BackupMode::Complete;
+                    self.load_backup_items().await?;
+                    self.state.transition_to(AppState::BackupItemSelection);
+                }
+                _ => {}
             }
-            KeyCode::Char('2') | KeyCode::Char('c') => {
-                self.state.backup_mode = BackupMode::Complete;
-                self.load_backup_items().await?;
-                self.state.transition_to(AppState::BackupItemSelection);
+        } else {
+            // Handle direct key presses (for backward compatibility)
+            match key.code {
+                KeyCode::Char('s') | KeyCode::Char('S') => {
+                    self.state.backup_mode = BackupMode::Secure;
+                    self.load_backup_items().await?;
+                    self.state.transition_to(AppState::BackupItemSelection);
+                }
+                KeyCode::Char('c') | KeyCode::Char('C') => {
+                    self.state.backup_mode = BackupMode::Complete;
+                    self.load_backup_items().await?;
+                    self.state.transition_to(AppState::BackupItemSelection);
+                }
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
+                    self.state.go_back();
+                }
+                _ => {}
             }
-            KeyCode::Esc | KeyCode::Char('q') => {
-                self.state.go_back();
-            }
-            _ => {}
         }
         Ok(())
     }
@@ -283,7 +327,7 @@ impl App {
                     }
                 }
             }
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.state.go_back();
             }
             _ => {}
@@ -319,7 +363,7 @@ impl App {
                 self.state.reset_backup_state();
                 self.state.transition_to(AppState::MainMenu);
             }
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.state.transition_to(AppState::Exit);
             }
             _ => {}
@@ -348,7 +392,7 @@ impl App {
                     }
                 }
             }
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.state.go_back();
             }
             _ => {}
@@ -396,7 +440,7 @@ impl App {
                     self.start_restore().await?;
                 }
             }
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.state.go_back();
             }
             _ => {}
@@ -414,7 +458,7 @@ impl App {
                 self.state.reset_restore_state();
                 self.state.transition_to(AppState::MainMenu);
             }
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.state.transition_to(AppState::Exit);
             }
             _ => {}
@@ -424,7 +468,7 @@ impl App {
 
     async fn handle_help_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.state.go_back();
             }
             _ => {}

@@ -26,6 +26,10 @@ impl MainMenuScreen {
         }
     }
 
+    pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<char> {
+        self.menu.handle_key(key)
+    }
+
     pub fn render(&mut self, frame: &mut ratatui::Frame, state: &AppStateManager) {
         let size = frame.area();
         

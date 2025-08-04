@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use log::{debug, error, info};
+use crossterm::execute;
 
 mod core;
 mod ui;
@@ -49,11 +50,33 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new()?;
     debug!("Terminal initialized");
     
-    // Run application
+    // Set up panic handler to ensure terminal cleanup
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        // Try to cleanup terminal on panic
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = execute!(
+            std::io::stderr(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture
+        );
+        
+        // Call the original panic handler
+        original_hook(panic_info);
+    }));
+    
+    // Run application with proper cleanup
     let result = run_app(&mut app, &mut terminal).await;
     
-    // Cleanup terminal
-    terminal.cleanup()?;
+    // Always cleanup terminal, regardless of result
+    if let Err(cleanup_err) = terminal.cleanup() {
+        error!("Failed to cleanup terminal: {}", cleanup_err);
+        // If we had a successful run but cleanup failed, return the cleanup error
+        if result.is_ok() {
+            return Err(cleanup_err);
+        }
+        // If we already had an error, log the cleanup error but return the original
+    }
     
     match result {
         Ok(_) => {
