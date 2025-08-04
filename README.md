@@ -26,6 +26,43 @@ A collection of custom tools and scripts for system administration and developme
 - **Storing for more than a week?** → `backup-profile-secure.sh`
 - **Might upload to cloud someday?** → `backup-profile-secure.sh`
 
+## Installation
+
+### Prerequisites
+The backup system automatically checks for prerequisites during both build and runtime:
+
+**Required:**
+- Bash shell (5.0+)
+- GNU tar (1.30+)
+- Gzip compression (1.10+)
+
+**Optional (for full functionality):**
+- GPG (for encryption)
+- shred (for secure deletion)
+- Package managers (pacman, flatpak, npm, pip, cargo)
+- Rust/Cargo (for building the terminal UI)
+
+### Quick Install
+```bash
+# Run the installation script
+./install.sh
+
+# Or build from source (UI only)
+cargo build --release
+```
+
+The installer will:
+- Check all prerequisites
+- Install scripts to `~/.local/bin`
+- Build the Rust UI (if Cargo is available)
+- Create convenient command aliases
+
+### Build-time Checks
+When building the Rust UI with `cargo build`, prerequisites are automatically verified. To skip checks (e.g., in CI):
+```bash
+SKIP_PREREQ_CHECKS=1 cargo build --release
+```
+
 ## Tools
 
 ### backup-profile-enhanced.sh
