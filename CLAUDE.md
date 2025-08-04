@@ -18,17 +18,28 @@ Custom tools and scripts for system administration, focusing on security and usa
 
 ## Current Tools
 
-### Backup Scripts
-1. **backup-profile-enhanced.sh** - Convenience-focused, includes all credentials
+### Backup System
+1. **Backup UI (backup-ui)** - Terminal interface for backup/restore operations
+   - Written in Rust with ratatui framework
+   - Provides intuitive menu-driven interface
+   - Handles both secure and complete backup modes
+   - Includes selective restore functionality
+
+2. **backup-profile-enhanced.sh** - Convenience-focused, includes all credentials
    - Use case: Immediate OS reinstall (same day/week)
    - Includes sensitive files for quick restoration
    - Must be securely deleted after use
 
-2. **backup-profile-secure.sh** - Security-focused, excludes credentials
+3. **backup-profile-secure.sh** - Security-focused, excludes credentials
    - Use case: Long-term storage, sharing, or uncertainty
    - Excludes .git-credentials, .aws/credentials, etc.
    - Offers GPG encryption
    - Creates files with 600 permissions
+
+4. **backup-noninteractive.sh** - Automation wrapper for TUI integration
+   - Runs without user interaction
+   - Used by the TUI to execute backups
+   - Supports both secure and complete modes
 
 ## Development Guidelines
 

@@ -65,6 +65,49 @@ SKIP_PREREQ_CHECKS=1 cargo build --release
 
 ## Tools
 
+### Backup UI (Terminal User Interface)
+
+A modern terminal interface for managing backups and restores with an intuitive menu-driven system.
+
+**Features:**
+- Interactive menu navigation with keyboard shortcuts
+- Visual backup mode selection (Secure vs Complete)
+- Item selection with categories and descriptions
+- Real-time progress tracking
+- Password-protected archives support
+- Selective restore capabilities
+- Comprehensive error handling
+
+**Installation:**
+```bash
+# Install the UI and scripts
+./install-backup-ui.sh
+
+# Or build from source
+cargo build --release
+```
+
+**Usage:**
+```bash
+# Run the UI
+backup-ui
+
+# With debug output
+backup-ui --debug
+
+# Specify output directory
+backup-ui --output /path/to/backups
+```
+
+**Keyboard Controls:**
+- Arrow keys or `j`/`k` - Navigate menus
+- Space - Toggle item selection
+- Enter - Confirm selection
+- `a` - Select all items
+- `n` - Select none
+- `q` or Esc - Go back/quit
+- `?` - Show help
+
 ### backup-profile-enhanced.sh
 
 An enhanced profile backup script that creates comprehensive backups of user configurations, dotfiles, and keys with detailed restoration documentation.
@@ -82,6 +125,29 @@ An enhanced profile backup script that creates comprehensive backups of user con
 **Usage:**
 ```bash
 ./backup-profile-enhanced.sh
+```
+
+### backup-noninteractive.sh
+
+A non-interactive wrapper script designed for automation and TUI integration.
+
+**Features:**
+- Runs without user prompts (ideal for automation)
+- Supports both secure and complete backup modes
+- Automatically selects appropriate configuration files
+- Sets restrictive permissions on output archives
+- Provides clear progress output
+
+**Usage:**
+```bash
+# Secure mode (default)
+./backup-noninteractive.sh secure
+
+# Complete mode (includes sensitive files)
+./backup-noninteractive.sh complete
+
+# With custom output directory
+BACKUP_DIR=/path/to/backups ./backup-noninteractive.sh secure
 ```
 
 ### backup-profile-secure.sh
