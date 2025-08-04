@@ -2,6 +2,23 @@
 
 A comprehensive terminal user interface for the backup and restore system, built with Rust and ratatui.
 
+## Prerequisites
+
+The system automatically verifies prerequisites during compilation. Required tools:
+- Bash shell (5.0+)
+- GNU tar (1.30+)
+- Gzip compression (1.10+)
+
+Optional tools for full functionality:
+- GPG (for encryption features)
+- shred (for secure file deletion)
+- Package managers (for software inventory)
+
+To skip prerequisite checks during build (e.g., in CI):
+```bash
+SKIP_PREREQ_CHECKS=1 cargo build --release
+```
+
 ## Features
 
 ### Core Functionality

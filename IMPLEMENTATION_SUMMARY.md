@@ -2,7 +2,26 @@
 
 ## Overview
 
-Successfully implemented backend updates for the backup system with modular architecture, modern configuration support, and enhanced security features.
+Successfully implemented backend updates for the backup system with modular architecture, modern configuration support, enhanced security features, and comprehensive prerequisite checking.
+
+## Prerequisite Checking System
+
+### `build.rs` - Compile-time Verification
+- Automatically checks for required tools during `cargo build`
+- Validates presence of bash, tar, gzip (required)
+- Checks for optional tools (gpg, shred, package managers)
+- Verifies backup script files exist
+- Provides installation hints for missing dependencies
+- Can be skipped with `SKIP_PREREQ_CHECKS=1` environment variable
+
+### `install.sh` - Installation Script
+- Comprehensive prerequisite checking with OS detection
+- Supports Linux distributions and macOS
+- Interactive installation process
+- Builds Rust UI if Cargo is available
+- Creates command aliases in `~/.local/bin`
+- Provides detailed feedback for missing dependencies
+- Graceful degradation for optional tools
 
 ## Files Created/Updated
 
