@@ -190,3 +190,22 @@ The script will:
 ## License
 
 MIT
+## Recent Updates (August 15, 2025)
+
+### Script Migration Complete
+All custom scripts from home directory have been migrated and organized into this repository:
+
+- **17 scripts** moved from `~/` to organized directories
+- **8 documentation files** relocated to `documentation/`
+- **Symlinks created** for backward compatibility
+- **Full index** available in `SCRIPT_INDEX.md`
+
+### New Directory Structure
+- `scripts/claude/` - Claude AI integration (6 scripts)
+- `scripts/obsidian/` - Obsidian management (1 script)
+- `scripts/network/` - Network utilities (3 scripts)
+- `scripts/system/` - System setup (1 script)
+- `scripts/cleanup/` - Cleanup tools (2 scripts)
+- `scripts/migration/` - Migration utilities (4 scripts)
+
+See `SCRIPT_INDEX.md` for complete details.

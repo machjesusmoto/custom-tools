@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Uninstall Rust and Rustup using rustup's self-uninstall command
+echo "Attempting to uninstall Rust and Rustup using 'rustup self uninstall'..."
+if command -v rustup &> /dev/null; then
+    rustup self uninstall -y
+    echo "Rust and Rustup uninstalled successfully."
+else
+    echo "rustup command not found. Assuming Rust was not installed via rustup or it's already uninstalled."
+fi
+
+# Remove remaining .cargo and .rustup directories in the home directory
+echo "Removing .cargo and .rustup directories from home directory..."
+if [ -d "$HOME/.cargo" ]; then
+    rm -rf "$HOME/.cargo"
+    echo "Removed $HOME/.cargo"
+else
+    echo "$HOME/.cargo not found."
+fi
+
+if [ -d "$HOME/.rustup" ]; then
+    rm -rf "$HOME/.rustup"
+    echo "Removed $HOME/.rustup"
+else
+    echo "$HOME/.rustup not found."
+fi
+
+# Remove any lingering PATH modifications in common shell configuration files
+echo "Checking and removing Rust-related PATH modifications..."
+CONFIG_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile")
+for file in "${CONFIG_FILES[@]}"; do
+    if [ -f "$file" ]; then
+        if grep -q "PATH.*cargo/bin" "$file"; then
+            echo "Removing Rust-related PATH from $file..."
+            sed -i '/PATH.*cargo\/bin/d' "$file"
+            echo "Removed PATH modification from $file"
+        fi
+    fi
+done
+
+echo "Rust and Rustup uninstallation process complete."
+echo "You may need to restart your terminal or source your shell configuration files (e.g., 'source ~/.bashrc') for changes to take effect."

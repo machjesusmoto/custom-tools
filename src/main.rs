@@ -1,11 +1,12 @@
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use log::{debug, error, info};
 use crossterm::execute;
 
 mod core;
 mod ui;
 mod backend;
+mod disaster_recovery;
 
 use core::app::{App, AppConfig};
 use ui::terminal::Terminal;
@@ -13,6 +14,9 @@ use ui::terminal::Terminal;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+    
     /// Path to backup configuration file
     #[arg(short, long, default_value = "backup-config.json")]
     config: String,
@@ -26,11 +30,27 @@ struct Cli {
     output: Option<String>,
 }
 
+#[derive(Subcommand)]
+enum Commands {
+    /// Launch the disaster recovery TUI
+    Dr,
+    /// Launch the backup UI (original)
+    Backup,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     
-    // Initialize logging
+    // Check if we're running the disaster recovery TUI
+    if let Some(Commands::Dr) = &cli.command {
+        // Run disaster recovery TUI with simpler setup
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
+            .init();
+        return disaster_recovery::run_tui();
+    }
+    
+    // Initialize logging for backup UI
     let log_level = if cli.debug { "debug" } else { "info" };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
         .init();

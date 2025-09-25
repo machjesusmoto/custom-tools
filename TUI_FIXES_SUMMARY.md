@@ -113,7 +113,7 @@ backup-ui
 
 ### Development testing:
 ```bash
-cd /home/dtaylor/GitHub/custom-tools
+cd /mnt/projects-truenasprod1/GitHub/custom-tools
 ./target/release/backup-ui --debug
 # Shows config discovery process and full debug info
 ```

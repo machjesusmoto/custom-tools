@@ -43,8 +43,8 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 - **OS:** Arch Linux (CachyOS)
 - **Rust Version:** Latest stable
 - **Terminal:** Various (issue occurs across different terminals)
-- **Build Directory:** `/home/dtaylor/GitHub/custom-tools`
-- **Test Directory:** `/home/dtaylor/testing/`
+- **Build Directory:** `/mnt/projects-truenasprod1/GitHub/custom-tools`
+- **Test Directory:** `/mnt/projects-truenasprod1/testing/`
 
 ### Steps to Reproduce
 
